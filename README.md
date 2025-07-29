@@ -1,5 +1,12 @@
-# slog
-
+```
+  ><< <<    ><<            ><<<<         ><<<<   
+><<    ><<  ><<         ><<    ><<     ><    ><< 
+ ><<        ><<       ><<        ><<  ><<        
+   ><<      ><<       ><<        ><<  ><<        
+      ><<   ><<       ><<        ><<  ><<   ><<<<
+><<    ><<  ><<         ><<     ><<    ><<    >< 
+  ><< <<    ><<<<<<<<      ><<<<         ><<<<< ⠀
+```
 **slog** is a simple Python utility that was born from doing a fun little Hack the Box Sherlocks challenge. The utility parses AWS CloudTrail logs (`.json` or `.json.gz`), extracts key event information, and displays it in a human-readable, filterable, and highlightable timeline. Output is shown in a terminal table and saved to CSV.
 
 ## Features
