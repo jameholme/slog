@@ -11,6 +11,13 @@
   - Source IP (`--source-ip`)
   - Resource ARN or name (`--resource-contains`)
   - Action/Event name (`--action`)
+* Supports flexible date/time filtering:
+  - Absolute start/end time (`--start`, `--end`)
+  - Relative ranges (`--last 24h`, `--last 30m`, etc.)
+  - Shortcut duration after start (`--end +2`)
+* Accepts dates with or without time:  
+  - `YYYY-MM-DD`  
+  - `YYYY-MM-DD HH:MM`  
 * Highlights any string of interest  
 * Automatically extracts meaningful fallback resource info (useful for IAM and API events)  
 * Outputs to terminal and CSV
@@ -54,7 +61,11 @@ python slog.py ./logs \
 | `--source-ip`         | Filter by source IP address |
 | `--resource-contains` | Filter by substring match in the resource ARN or ID |
 | `--action`            | Filter by event/action name (e.g. `CreateUser`, `DeleteAccessKey`) |
+| `--access-key`        | Filter by access key ID |
 | `--highlight`         | Highlight a string (e.g. a user, IP, action, or ARN) in the output |
+| `--start`             | Start time (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
+| `--end`               | End time (`YYYY-MM-DD`, `YYYY-MM-DD HH:MM`, or `+N` hours after `--start`) |
+| `--last`              | Use a relative time range (e.g. `30m`, `1h`, `2h`, `12h`, `24h`, `7d`) |
 
 ---
 
@@ -93,6 +104,18 @@ Search for user activity from a specific IP:
 
 ```bash
 python slog.py ./logs --user bob --source-ip 192.168.1.12
+```
+
+Last 2 hours of activity:
+
+```bash
+python slog.py ./logs --last 2h
+```
+
+All activity starting at 2024-12-01 08:00 and continuing for 2 hours:
+
+```bash
+python slog.py ./logs --start "2024-12-01 08:00" --end +2
 ```
 
 ---
