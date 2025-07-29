@@ -107,7 +107,7 @@ def highlight_text(text, highlight_string):
 
 def output_results(
     events,
-    output_csv="cloudtrail_timeline.csv",
+    output_csv="slog.csv",
     highlight=None,
     user_filter=None,
     ip_filter=None,
@@ -177,7 +177,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Parse AWS CloudTrail JSON logs into timeline format.")
     parser.add_argument("path", help="Path to CloudTrail JSON file or directory")
-    parser.add_argument("--csv", help="Output CSV file name", default="cloudtrail_timeline.csv")
+    parser.add_argument("--csv", help="Output CSV file name", default="slog.csv")
     parser.add_argument("--highlight", help="String to highlight in table output", default=None)
     parser.add_argument("--user", help="Filter by username or principal ID", default=None)
     parser.add_argument("--source-ip", help="Filter by source IP address", default=None)
