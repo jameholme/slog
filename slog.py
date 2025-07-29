@@ -1,198 +1,141 @@
 import os
-import json
 import gzip
+import json
+import argparse
+from datetime import datetime
 import pandas as pd
 from rich.console import Console
 from rich.table import Table
-from rich.box import SIMPLE_HEAVY
-from datetime import datetime
-import re
+from rich import box
+from rich.highlighter import Highlighter
 
-console = Console()
+class CustomHighlighter(Highlighter):
+    def __init__(self, highlight_str):
+        self.highlight_str = highlight_str.lower() if highlight_str else None
 
+    def highlight(self, text):
+        if self.highlight_str and self.highlight_str in text.plain.lower():
+            text.stylize("bold red", 0, len(text))
 
-def read_json_file(filepath):
-    try:
-        if filepath.endswith(".gz"):
-            with gzip.open(filepath, 'rt', encoding='utf-8') as f:
-                return json.load(f)
-        else:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                return json.load(f)
-    except Exception as e:
-        console.print(f"[red]Failed to read {filepath}: {e}[/red]")
-        return None
+def parse_event(event):
+    user_identity = event.get("userIdentity", {})
+    user = user_identity.get("userName") or user_identity.get("principalId", "N/A")
+    access_key = user_identity.get("accessKeyId", "N/A")
+    event_time = event.get("eventTime", "N/A")
+    action = event.get("eventName", "N/A")
+    src_ip = event.get("sourceIPAddress", "N/A")
+    dst_ip = event.get("recipientAccountId", "N/A")
 
-
-def extract_events(data):
-    events = []
-    records = data.get("Records", []) if isinstance(data, dict) else []
-
-    for record in records:
-        event_time = record.get("eventTime")
-        user_identity = record.get("userIdentity", {})
-        user_name = user_identity.get("userName") or user_identity.get("principalId", "Unknown")
-        access_key = record.get("accessKeyId", "N/A")
-        event_name = record.get("eventName")
-        source_ip = record.get("sourceIPAddress", "N/A")
-        dest_ip = record.get("destinationIPAddress", "N/A")
-
-        # Try to extract standard resource ARNs
-        resources = record.get("resources", [])
-        resource_arns = ", ".join(r.get("ARN", "") for r in resources if "ARN" in r)
-
-        # If no ARNs, try to build fallback info from requestParameters
-        if not resource_arns:
-            request_params = record.get("requestParameters", {})
-            fallback_parts = []
-            if isinstance(request_params, dict):
-                for k, v in request_params.items():
-                    if isinstance(v, (str, int, float)):
-                        fallback_parts.append(f"{k}={v}")
-                    elif isinstance(v, dict) and "arn" in v:
-                        fallback_parts.append(f"{k}={v['arn']}")
-            if fallback_parts:
-                resource_arns = f"{event_name}: " + ", ".join(fallback_parts)
-            else:
-                resource_arns = f"{event_name}: No resource details"
-
-        events.append({
-            "Time": event_time,
-            "User": user_name,
-            "AccessKey": access_key,
-            "Action": event_name,
-            "SourceIP": source_ip,
-            "DestinationIP": dest_ip,
-            "Resource": resource_arns,
-        })
-
-    return events
-
-
-def process_path(path):
-    all_events = []
-
-    if os.path.isfile(path):
-        data = read_json_file(path)
-        if data:
-            all_events.extend(extract_events(data))
-    elif os.path.isdir(path):
-        for root, _, files in os.walk(path):
-            for name in files:
-                if name.endswith(".json") or name.endswith(".json.gz"):
-                    file_path = os.path.join(root, name)
-                    data = read_json_file(file_path)
-                    if data:
-                        all_events.extend(extract_events(data))
+    resources = event.get("resources", [])
+    if resources:
+        resource_str = ", ".join([r.get("ARN", r.get("resourceName", "")) for r in resources])
     else:
-        console.print(f"[red]Path not found: {path}[/red]")
+        params = event.get("requestParameters", {})
+        if isinstance(params, dict):
+            resource_str = ", ".join(f"{k}={v}" for k, v in params.items() if isinstance(v, (str, int)))
+        else:
+            resource_str = "N/A"
 
-    return all_events
-
-
-def highlight_text(text, highlight_string):
-    if not highlight_string or not text:
-        return text
-    try:
-        pattern = re.escape(highlight_string)
-        return re.sub(
-            pattern,
-            f"[bold red]\\g<0>[/bold red]",
-            text,
-            flags=re.IGNORECASE
-        )
-    except Exception:
-        return text
-
-
-def output_results(
-    events,
-    output_csv="slog.csv",
-    highlight=None,
-    user_filter=None,
-    ip_filter=None,
-    resource_filter=None,
-    action_filter=None,
-):
-    if not events:
-        console.print("[yellow]No events found.[/yellow]")
-        return
-
-    df = pd.DataFrame(events)
-
-    # Apply filters
-    if user_filter:
-        df = df[df["User"].str.contains(user_filter, case=False, na=False)]
-
-    if ip_filter:
-        df = df[df["SourceIP"].str.contains(ip_filter, case=False, na=False)]
-
-    if resource_filter:
-        df = df[df["Resource"].str.contains(resource_filter, case=False, na=False)]
-
-    if action_filter:
-        df = df[df["Action"].str.contains(action_filter, case=False, na=False)]
-
-    if df.empty:
-        console.print("[yellow]No events matched the filters.[/yellow]")
-        return
-
-    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
-    df.sort_values(by="Time", inplace=True)
-    df.to_csv(output_csv, index=False)
-
-    # Display a rich-formatted table
-    table = Table(title="CloudTrail Timeline", box=SIMPLE_HEAVY, show_lines=True)
-
-    column_settings = {
-        "Time": {"style": "green"},
-        "User": {"style": "magenta"},
-        "AccessKey": {"style": "cyan"},
-        "Action": {"style": "yellow"},
-        "SourceIP": {"style": "blue"},
-        "DestinationIP": {"style": "blue"},
-        "Resource": {"style": "white", "max_width": 60},
+    return {
+        "Time": event_time,
+        "User": user,
+        "AccessKey": access_key,
+        "Action": action,
+        "SourceIP": src_ip,
+        "DestinationIP": dst_ip,
+        "Resource": resource_str or "N/A"
     }
 
-    for col in df.columns:
-        settings = column_settings.get(col, {})
-        table.add_column(col, **settings)
+def load_events_from_file(filepath):
+    events = []
+    open_func = gzip.open if filepath.endswith(".gz") else open
+    with open_func(filepath, "rt", encoding="utf-8") as f:
+        content = json.load(f)
+        for record in content.get("Records", []):
+            events.append(parse_event(record))
+    return events
 
-    for _, row in df.iterrows():
-        row_data = []
-        for col in df.columns:
-            val = str(row[col]) if pd.notna(row[col]) else ""
-            if col == "Resource" and len(val) > 60:
-                val = "\n".join([val[i:i+60] for i in range(0, len(val), 60)])
-            val = highlight_text(val, highlight)
-            row_data.append(val)
-        table.add_row(*row_data)
+def collect_all_events(path):
+    all_events = []
+    for root, _, files in os.walk(path):
+        for file in files:
+            if file.endswith(".json") or file.endswith(".json.gz"):
+                filepath = os.path.join(root, file)
+                all_events.extend(load_events_from_file(filepath))
+    return sorted(all_events, key=lambda x: x["Time"])
 
+def filter_events(events, args):
+    def parse_time(t):
+        if not t:
+            return None
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(t, fmt)
+            except ValueError:
+                continue
+        raise ValueError(f"Invalid time format: {t}")
+
+    start = parse_time(args.start_time)
+    end = parse_time(args.end_time)
+
+    filtered = []
+    for event in events:
+        try:
+            event_dt = datetime.strptime(event["Time"], "%Y-%m-%dT%H:%M:%SZ")
+            if start and event_dt < start:
+                continue
+            if end and event_dt > end:
+                continue
+        except Exception:
+            pass
+
+        if args.user and event["User"] != args.user:
+            continue
+        if args.source_ip and event["SourceIP"] != args.source_ip:
+            continue
+        if args.resource_contains and args.resource_contains.lower() not in event["Resource"].lower():
+            continue
+        if args.action and args.action.lower() != event["Action"].lower():
+            continue
+
+        filtered.append(event)
+
+    return filtered
+
+def display_events(events, highlight):
+    table = Table(show_header=True, header_style="bold cyan", box=box.MINIMAL_DOUBLE_HEAD)
+    for column in ["Time", "User", "AccessKey", "Action", "SourceIP", "DestinationIP", "Resource"]:
+        table.add_column(column, overflow="fold")
+
+    highlighter = CustomHighlighter(highlight)
+    for event in events:
+        row = [highlighter(str(event[col])) for col in table.columns.keys()]
+        table.add_row(*row)
+
+    console = Console()
     console.print(table)
-    console.print(f"[green]Saved CSV output to {output_csv}[/green]")
 
+def save_to_csv(events, filename):
+    df = pd.DataFrame(events)
+    df.to_csv(filename, index=False)
 
-if __name__ == "__main__":
-    import argparse
-
-    parser = argparse.ArgumentParser(description="Parse AWS CloudTrail JSON logs into timeline format.")
-    parser.add_argument("path", help="Path to CloudTrail JSON file or directory")
-    parser.add_argument("--csv", help="Output CSV file name", default="slog.csv")
-    parser.add_argument("--highlight", help="String to highlight in table output", default=None)
-    parser.add_argument("--user", help="Filter by username or principal ID", default=None)
-    parser.add_argument("--source-ip", help="Filter by source IP address", default=None)
-    parser.add_argument("--resource-contains", help="Filter by substring in resource ARN(s)", default=None)
-    parser.add_argument("--action", help="Filter by action/event name", default=None)
-
+def main():
+    parser = argparse.ArgumentParser(description="slog: CloudTrail log timeline viewer")
+    parser.add_argument("path", help="Path to CloudTrail .json or .json.gz files or directory")
+    parser.add_argument("--csv", default="cloudtrail_timeline.csv", help="CSV output filename")
+    parser.add_argument("--user", help="Filter by username or principalId")
+    parser.add_argument("--source-ip", help="Filter by source IP address")
+    parser.add_argument("--resource-contains", help="Filter if resource contains this substring")
+    parser.add_argument("--action", help="Filter by action/event name")
+    parser.add_argument("--highlight", help="Highlight a specific string in output")
+    parser.add_argument("--start-time", help="Start time in YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
+    parser.add_argument("--end-time", help="End time in YYYY-MM-DD or YYYY-MM-DD HH:MM:SS")
     args = parser.parse_args()
 
-    events = process_path(args.path)
-    output_results(
-        events,
-        output_csv=args.csv,
-        highlight=args.highlight,
-        user_filter=args.user,
-        ip_filter=args.source_ip,
-        resource_filter=args.resource_contains,
-        action_filter=args.action,
-    )
+    events = collect_all_events(args.path)
+    filtered = filter_events(events, args)
+    display_events(filtered, args.highlight)
+    save_to_csv(filtered, args.csv)
+
+if __name__ == "__main__":
+    main()
