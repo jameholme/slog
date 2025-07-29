@@ -49,7 +49,7 @@ python slog.py ./logs \
 | Option                | Description |
 |------------------------|-------------|
 | `path`                | Path to CloudTrail `.json` or `.json.gz` file or directory |
-| `--csv`               | Output CSV file name (default: `cloudtrail_timeline.csv`) |
+| `--csv`               | Output CSV file name (default: `slog.csv`) |
 | `--user`              | Filter by user name or principal ID |
 | `--source-ip`         | Filter by source IP address |
 | `--resource-contains` | Filter by substring match in the resource ARN or ID |
@@ -61,7 +61,7 @@ python slog.py ./logs \
 ## 📄 Output
 
 - **Terminal Table**: Formatted table of filtered and sorted events with optional highlighting
-- **CSV File**: All displayed data saved to a CSV (default: `cloudtrail_timeline.csv`)
+- **CSV File**: All displayed data saved to a CSV (default: `slog.csv`)
 
 ### Output Columns
 
