@@ -5,11 +5,12 @@ import pandas as pd
 from rich.console import Console
 from rich.table import Table
 from rich.box import SIMPLE_HEAVY
-from datetime import datetime
+from datetime import datetime, timedelta
 import re
+import pytz
+import argparse
 
 console = Console()
-
 
 def read_json_file(filepath):
     try:
@@ -22,7 +23,6 @@ def read_json_file(filepath):
     except Exception as e:
         console.print(f"[red]Failed to read {filepath}: {e}[/red]")
         return None
-
 
 def extract_events(data):
     events = []
@@ -37,11 +37,9 @@ def extract_events(data):
         source_ip = record.get("sourceIPAddress", "N/A")
         dest_ip = record.get("destinationIPAddress", "N/A")
 
-        # Try to extract standard resource ARNs
         resources = record.get("resources", [])
         resource_arns = ", ".join(r.get("ARN", "") for r in resources if "ARN" in r)
 
-        # If no ARNs, try to build fallback info from requestParameters
         if not resource_arns:
             request_params = record.get("requestParameters", {})
             fallback_parts = []
@@ -56,6 +54,22 @@ def extract_events(data):
             else:
                 resource_arns = f"{event_name}: No resource details"
 
+        errors_or_output = []
+        if "errorMessage" in record:
+            errors_or_output.append(f"ErrorMessage={record['errorMessage']}")
+        if "errorCode" in record:
+            errors_or_output.append(f"ErrorCode={record['errorCode']}")
+        if "responseElements" in record:
+            resp = record["responseElements"]
+            if isinstance(resp, dict):
+                try:
+                    errors_or_output.append(f"ResponseElements={json.dumps(resp)}")
+                except Exception:
+                    pass
+
+        if errors_or_output:
+            resource_arns += "\n" + "\n".join(errors_or_output)
+
         events.append({
             "Time": event_time,
             "User": user_name,
@@ -67,7 +81,6 @@ def extract_events(data):
         })
 
     return events
-
 
 def process_path(path):
     all_events = []
@@ -89,7 +102,6 @@ def process_path(path):
 
     return all_events
 
-
 def highlight_text(text, highlight_string):
     if not highlight_string or not text:
         return text
@@ -104,6 +116,47 @@ def highlight_text(text, highlight_string):
     except Exception:
         return text
 
+def parse_datetime_input(time_str):
+    formats = ["%Y-%m-%d %H:%M", "%Y-%m-%d"]
+    for fmt in formats:
+        try:
+            dt = datetime.strptime(time_str, fmt)
+            return dt.replace(tzinfo=pytz.UTC)
+        except ValueError:
+            continue
+    console.print(f"[red]Invalid time format: {time_str}. Use 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'[/red]")
+    return None
+
+def parse_relative_last(last_str):
+    now = datetime.now(pytz.UTC)
+    match = re.match(r'^(\d+)([dhm])$', last_str)
+    if not match:
+        console.print(f"[red]Invalid --last format. Use like '7d', '24h', or '30m'.[/red]")
+        return None, None
+
+    value, unit = int(match.group(1)), match.group(2)
+    if unit == "d":
+        start = now - timedelta(days=value)
+    elif unit == "h":
+        start = now - timedelta(hours=value)
+    elif unit == "m":
+        start = now - timedelta(minutes=value)
+    else:
+        return None, None
+
+    return start, now
+
+def parse_relative_end(start_dt, end_str):
+    if not end_str.startswith("+"):
+        return None
+    try:
+        hours = int(end_str[1:])
+        if not (1 <= hours <= 72):
+            raise ValueError
+        return start_dt + timedelta(hours=hours)
+    except:
+        console.print("[red]--end +N must be a number between 1 and 72[/red]")
+        return None
 
 def output_results(
     events,
@@ -113,14 +166,22 @@ def output_results(
     ip_filter=None,
     resource_filter=None,
     action_filter=None,
+    access_key_filter=None,
+    start_time=None,
+    end_time=None,
 ):
     if not events:
         console.print("[yellow]No events found.[/yellow]")
         return
 
     df = pd.DataFrame(events)
+    df["Time"] = pd.to_datetime(df["Time"], utc=True, errors="coerce")
 
-    # Apply filters
+    if start_time:
+        df = df[df["Time"] >= start_time]
+    if end_time:
+        df = df[df["Time"] <= end_time]
+
     if user_filter:
         df = df[df["User"].str.contains(user_filter, case=False, na=False)]
 
@@ -133,15 +194,16 @@ def output_results(
     if action_filter:
         df = df[df["Action"].str.contains(action_filter, case=False, na=False)]
 
+    if access_key_filter:
+        df = df[df["AccessKey"].str.contains(access_key_filter, case=False, na=False)]
+
     if df.empty:
         console.print("[yellow]No events matched the filters.[/yellow]")
         return
 
-    df["Time"] = pd.to_datetime(df["Time"], errors="coerce")
     df.sort_values(by="Time", inplace=True)
     df.to_csv(output_csv, index=False)
 
-    # Display a rich-formatted table
     table = Table(title="CloudTrail Timeline", box=SIMPLE_HEAVY, show_lines=True)
 
     column_settings = {
@@ -171,10 +233,7 @@ def output_results(
     console.print(table)
     console.print(f"[green]Saved CSV output to {output_csv}[/green]")
 
-
 if __name__ == "__main__":
-    import argparse
-
     parser = argparse.ArgumentParser(description="Parse AWS CloudTrail JSON logs into timeline format.")
     parser.add_argument("path", help="Path to CloudTrail JSON file or directory")
     parser.add_argument("--csv", help="Output CSV file name", default="slog.csv")
@@ -183,8 +242,24 @@ if __name__ == "__main__":
     parser.add_argument("--source-ip", help="Filter by source IP address", default=None)
     parser.add_argument("--resource-contains", help="Filter by substring in resource ARN(s)", default=None)
     parser.add_argument("--action", help="Filter by action/event name", default=None)
+    parser.add_argument("--access-key", help="Filter by AccessKeyId", default=None)
+    parser.add_argument("--start", help="Start time in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'", default=None)
+    parser.add_argument("--end", help="End time in 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM', or +N (hours)", default=None)
+    parser.add_argument("--last", help="Use relative time like 7d, 24h, 30m", default=None)
 
     args = parser.parse_args()
+
+    start_dt, end_dt = None, None
+
+    if args.last:
+        start_dt, end_dt = parse_relative_last(args.last)
+    elif args.start:
+        start_dt = parse_datetime_input(args.start)
+        if args.end:
+            if args.end.startswith("+"):
+                end_dt = parse_relative_end(start_dt, args.end)
+            else:
+                end_dt = parse_datetime_input(args.end)
 
     events = process_path(args.path)
     output_results(
@@ -195,4 +270,7 @@ if __name__ == "__main__":
         ip_filter=args.source_ip,
         resource_filter=args.resource_contains,
         action_filter=args.action,
+        access_key_filter=args.access_key,
+        start_time=start_dt,
+        end_time=end_dt,
     )
