@@ -47,7 +47,7 @@ ACTION_SEVERITY = {
     "UpdateLoginProfile": "Critical",
     "PutAccountSettingDefault": "Critical",
 
-    # High (excluding already marked as Critical)
+    # High
     "CreateRole": "High",
     "CreateTrail": "High",
     "PutBucketAcl": "High",
