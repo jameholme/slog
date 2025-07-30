@@ -15,44 +15,87 @@ import textwrap
 console = Console()
 
 SENSITIVE_ACTIONS = {
-    "DeleteBucket": ("Critical"),
-    "PutBucketAcl": ("High"),
-    "CreateUser": ("Critical"),
-    "DeleteUser": ("Critical"),
-    "AttachUserPolicy": ("Critical"),
-    "DetachUserPolicy": ("Critical"),
-    "CreateAccessKey": ("Critical"),
-    "DeleteAccessKey": ("Critical"),
-    "UpdateAccessKey": ("Critical"),
-    "UpdateAssumeRolePolicy": ("Critical"),
-    "CreateRole": ("High"),
-    "DeleteRole": ("Critical"),
-    "PutRolePolicy": ("Critical"),
-    "AddUserToGroup": ("Critical"),
-    "RemoveUserFromGroup": ("Critical"),
-    "CreateTrail": ("High"),
-    "DeleteTrail": ("High"),
-    "StopLogging": ("High"),
-    "StartLogging": ("High"),
-    "UpdateTrail": ("High"),
-    "PutUserPolicy": ("Critical"),
-    "PutGroupPolicy": ("Critical"),
-    "CreatePolicy": ("Critical"),
-    "DeletePolicy": ("Critical"),
-    "AttachRolePolicy": ("Critical"),
-    "DetachRolePolicy": ("Critical"),
-    "CreateLoginProfile": ("Critical"),
-    "UpdateLoginProfile": ("Critical"),
-    "DeleteLoginProfile": ("Critical"),
-    "AssumeRole": ("Critical"),
-    "PutBucketPolicy": ("Critical"),
-    "PutObjectAcl": ("High"),
-    "ModifySnapshotAttribute": ("Critical"),
-    "AuthorizeSecurityGroupIngress": ("Critical"),
-    "AuthorizeSecurityGroupEgress": ("Critical"),
-    "RevokeSecurityGroupIngress": ("Critical"),
-    "RevokeSecurityGroupEgress": ("Critical"),
-    "PutAccountSettingDefault": ("Critical"),
+# Critical
+"AddUserToGroup": ("Critical"),
+"AssumeRole": ("Critical"),
+"AttachRolePolicy": ("Critical"),
+"AttachUserPolicy": ("Critical"),
+"AuthorizeSecurityGroupEgress": ("Critical"),
+"AuthorizeSecurityGroupIngress": ("Critical"),
+"CreateAccessKey": ("Critical"),
+"CreateLoginProfile": ("Critical"),
+"CreatePolicy": ("Critical"),
+"CreateUser": ("Critical"),
+"DeleteAccessKey": ("Critical"),
+"DeleteLoginProfile": ("Critical"),
+"DeletePolicy": ("Critical"),
+"DeleteRole": ("Critical"),
+"DeleteTrail": ("Critical"),
+"DeleteUser": ("Critical"),
+"DetachRolePolicy": ("Critical"),
+"DetachUserPolicy": ("Critical"),
+"ModifySnapshotAttribute": ("Critical"),
+"PutBucketPolicy": ("Critical"),
+"PutGroupPolicy": ("Critical"),
+"PutRolePolicy": ("Critical"),
+"PutUserPolicy": ("Critical"),
+"RevokeSecurityGroupEgress": ("Critical"),
+"RevokeSecurityGroupIngress": ("Critical"),
+"StopLogging": ("Critical"),
+"UpdateAccessKey": ("Critical"),
+"UpdateAssumeRolePolicy": ("Critical"),
+"UpdateLoginProfile": ("Critical"),
+# High
+"CreatePolicy": ("High"),
+"CreateRole": ("High"),
+"CreateTrail": ("High"),
+"DeletePolicy": ("High"),
+"DeleteRole": ("High"),
+"DeleteTrail": ("High"),
+"PutBucketAcl": ("High"),
+"PutObjectAcl": ("High"),
+"RemoveUserFromGroup": ("High"),
+"StartLogging": ("High"),
+"StopLogging": ("High"),
+"UpdateTrail": ("High"),
+# Medium
+"DescribeInstances": ("Medium"),
+"DescribeSecurityGroups": ("Medium"),
+"GenerateServiceLastAccessedDetails": ("Medium"),
+"GetBucketAcl": ("Medium"),
+"GetBucketPolicy": ("Medium"),
+"GetObject": ("Medium"),
+"ListAccessKeys": ("Medium"),
+"ListBuckets": ("Medium"),
+"ListGroups": ("Medium"),
+"ListObjects": ("Medium"),
+"ListRoles": ("Medium"),
+"ListUsers": ("Medium"),
+"PutAccountSettingDefault": ("Medium"),
+# Low
+"GetAccountSummary": ("Low"),
+"GetCallerIdentity": ("Low"),
+"GetGroup": ("Low"),
+"GetLoginProfile": ("Low"),
+"GetPolicy": ("Low"),
+"GetRole": ("Low"),
+"GetUser": ("Low"),
+"ListAccountAliases": ("Low"),
+"ListAttachedRolePolicies": ("Low"),
+"ListRolePolicies": ("Low"),
+"ListUserPolicies": ("Low"),
+# Informational
+"DescribeAvailabilityZones": ("Informational"),
+"DescribeLogGroups": ("Informational"),
+"DescribeRegions": ("Informational"),
+"DescribeTrails": ("Informational"),
+"GetEventSelectors": ("Informational"),
+"GetMetricData": ("Informational"),
+"GetMetricStatistics": ("Informational"),
+"GetResourcePolicy": ("Informational"),
+"ListMetrics": ("Informational"),
+"ListTagsForResource": ("Informational"),
+"LookupEvents": ("Informational"),
 }
 
 SEVERITY_COLORS = {
@@ -262,8 +305,10 @@ def output_results(
 
         if detect_level:
             detect_level = detect_level.capitalize()
-            if detect_level in SEVERITY_COLORS:
+            if detect_level in ["Medium", "High", "Critical", "Low", "Informational"]:
                 df = df[df["Severity"] == detect_level]
+        else:
+            df = df[df["Severity"].isin(["Medium", "High", "Critical"])]
 
     if df.empty:
         console.print("[yellow]No events matched the filters.[/yellow]")
@@ -396,7 +441,7 @@ def main():
     parser.add_argument("--start", help="Start time in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'", default=None)
     parser.add_argument("--end", help="End time in 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM', or +N (hours)", default=None)
     parser.add_argument("--last", help="Use relative time like 7d, 24h, 30m", default=None)
-    parser.add_argument("--detect", nargs='?', const='all', choices=['all', 'medium', 'high', 'critical'], help="Detect sensitive actions; optionally filter by severity")
+    parser.add_argument("--detect", nargs='?', const='all', choices=['all', 'informational', 'low', 'medium', 'high', 'critical'], help="Detect sensitive actions; optionally filter by severity (informational, low, medium, high, critical)")
 
     args = parser.parse_args()
 
