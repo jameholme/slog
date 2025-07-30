@@ -59,19 +59,38 @@ pip install pandas rich pytz
 ## 🚀 Usage
 
 ```bash
-python slog.py <path-to-log-files> [options]
-```
+usage: slog.py [-h] [--csv CSV] [--highlight HIGHLIGHT] [--user USER] [--source-ip SOURCE_IP] [--resource-contains RESOURCE_CONTAINS] [--action ACTION] [--access-key ACCESS_KEY] [--start START] [--end END] [--last LAST] [--detect [{all,informational,low,medium,high,critical}]] [path]
 
-### Example:
+It's time to slog through some logs!
 
-```bash
-python slog.py ./cloudtrail-logs \
-  --user alice \
-  --source-ip 10.0.0.5 \
-  --action DeleteUser \
-  --resource-contains iam \
-  --highlight AKIA \
-  --detect
+positional arguments:
+  path                  Path to CloudTrail JSON file or directory
+
+options:
+  -h, --help            show this help message and exit
+  --csv CSV             Output CSV file name
+  --highlight HIGHLIGHT
+                        String to highlight in table output
+  --user USER           Filter by username or principal ID
+  --source-ip SOURCE_IP
+                        Filter by source IP address
+  --resource-contains RESOURCE_CONTAINS
+                        Filter by substring in resource ARN(s)
+  --action ACTION       Filter by action/event name
+  --access-key ACCESS_KEY
+                        Filter by AccessKeyId
+  --start START         Start time in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'
+  --end END             End time in 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM', or +N (hours)
+  --last LAST           Use relative time like 7d, 24h, 30m
+  --detect [{all,informational,low,medium,high,critical}]
+                        Detect sensitive actions; optionally filter by severity (informational, low, medium, high, critical)
+
+EXAMPLES:
+  python script.py ./logs/cloudtrail-2023-07-30.json --csv output.csv
+  python script.py ./cloudtrail_logs --highlight DeleteUser
+  python script.py ./logs --user alice --last 7d
+  python script.py ./logs --detect critical
+  python script.py ./logs --start "2023-07-01 00:00" --end "2023-07-15 23:59"
 ```
 
 ---
