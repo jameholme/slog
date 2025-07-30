@@ -12,6 +12,43 @@ import argparse
 
 console = Console()
 
+# --- Sensitive actions list for detection logic ---
+SENSITIVE_ACTIONS = {
+    "CreateAccessKey",
+    "DeleteAccessKey",
+    "UpdateAccessKey",
+    "CreateUser",
+    "DeleteUser",
+    "AttachUserPolicy",
+    "DetachUserPolicy",
+    "PutUserPolicy",
+    "PutGroupPolicy",
+    "CreatePolicy",
+    "DeletePolicy",
+    "AttachRolePolicy",
+    "DetachRolePolicy",
+    "PutRolePolicy",
+    "CreateLoginProfile",
+    "UpdateLoginProfile",
+    "DeleteLoginProfile",
+    "AddUserToGroup",
+    "RemoveUserFromGroup",
+    "AssumeRole",
+    "CreateTrail",
+    "DeleteTrail",
+    "StopLogging",
+    "StartLogging",
+    "PutBucketPolicy",
+    "PutObjectAcl",
+    "PutBucketAcl",
+    "ModifySnapshotAttribute",
+    "AuthorizeSecurityGroupIngress",
+    "AuthorizeSecurityGroupEgress",
+    "RevokeSecurityGroupIngress",
+    "RevokeSecurityGroupEgress",
+    "UpdateAssumeRolePolicy"
+}
+
 def read_json_file(filepath):
     try:
         if filepath.endswith(".gz"):
@@ -246,6 +283,7 @@ if __name__ == "__main__":
     parser.add_argument("--start", help="Start time in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'", default=None)
     parser.add_argument("--end", help="End time in 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM', or +N (hours)", default=None)
     parser.add_argument("--last", help="Use relative time like 7d, 24h, 30m", default=None)
+    parser.add_argument("--detect", help="Only show sensitive AWS actions", action="store_true")  # <-- NEW ARG
 
     args = parser.parse_args()
 
@@ -261,6 +299,15 @@ if __name__ == "__main__":
             else:
                 end_dt = parse_datetime_input(args.end)
 
+    # --- Detection logic override ---
+    action_filter = args.action
+    if args.detect:
+        sensitive_regex = "|".join(re.escape(action) for action in SENSITIVE_ACTIONS)
+        if action_filter:
+            action_filter = f"({action_filter})|({sensitive_regex})"
+        else:
+            action_filter = sensitive_regex
+
     events = process_path(args.path)
     output_results(
         events,
@@ -269,7 +316,7 @@ if __name__ == "__main__":
         user_filter=args.user,
         ip_filter=args.source_ip,
         resource_filter=args.resource_contains,
-        action_filter=args.action,
+        action_filter=action_filter,
         access_key_filter=args.access_key,
         start_time=start_dt,
         end_time=end_dt,
