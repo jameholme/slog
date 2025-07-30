@@ -36,9 +36,22 @@
 ---
 
 ## 📦 Requirements
-
+This script relies on the following Python packages and standard libraries:
+- Standard libraries (no installation needed):
+  - os
+  - json
+  - gzip
+  - datetime
+  - re
+  - argparse
+  - textwrap
+- Third-party libraries (install with pip):
+  - pandas
+  - rich
+  - pytz
+  
 ```bash
-pip install pandas rich
+pip install pandas rich pytz
 ```
 
 ---
@@ -118,6 +131,7 @@ To show just one level:
 - `SourceIP`
 - `DestinationIP`
 - `Resource`
+- `Severity`
 
 ---
 
