@@ -10,6 +10,7 @@ import re
 import pytz
 import argparse
 from rich.markup import escape
+import textwrap
 
 console = Console()
 
@@ -53,7 +54,6 @@ SENSITIVE_ACTIONS = {
     "RevokeSecurityGroupEgress": ("Critical"),
     "PutAccountSettingDefault": ("Critical"),
 }
-
 
 SEVERITY_COLORS = {
     "Medium": "yellow",
@@ -285,39 +285,107 @@ def output_results(
         "Severity": {},
     }
 
-    for col in column_settings.keys():
-        table.add_column(col, **column_settings[col])
+    for col, opts in column_settings.items():
+        if "max_width" in opts:
+            table.add_column(col, style=opts.get("style", None), max_width=opts["max_width"], overflow="fold")
+        else:
+            table.add_column(col, style=opts.get("style", None))
 
     for _, row in df.iterrows():
-        row_data = []
-        for col in column_settings.keys():
-            val = str(row[col]) if pd.notna(row[col]) else ""
+        severity = row["Severity"]
+        sev_color = SEVERITY_COLORS.get(severity, None)
+        sev_text = severity
+        if sev_color:
+            sev_text = f"[bold {sev_color}]{severity}[/bold {sev_color}]"
 
-            # Escape markup before printing to avoid Rich markup errors
-            val = escape(val)
+        resource_text = row["Resource"]
+        if highlight:
+            resource_text = highlight_text(resource_text, highlight)
 
-            # Special formatting for Resource: wrap long lines
-            if col == "Resource" and len(val) > 60:
-                val = "\n".join([val[i:i+60] for i in range(0, len(val), 60)])
-
-            # Highlight severity tags with colors
-            if col == "Severity" and val in SEVERITY_COLORS:
-                color = SEVERITY_COLORS[val]
-                val = f"[{color}]{val}[/{color}]"
-
-            # Highlight user-specified string
-            if col != "Severity":  # Don't override severity color
-                val = highlight_text(val, highlight)
-
-            row_data.append(val)
-        table.add_row(*row_data)
+        table.add_row(
+            row["Time"].strftime("%Y-%m-%d %H:%M:%S"),
+            row["User"],
+            row["AccessKey"],
+            row["Action"],
+            row["SourceIP"],
+            row["DestinationIP"],
+            resource_text,
+            sev_text
+        )
 
     console.print(table)
-    console.print(f"[green]Saved CSV output to {output_csv}[/green]")
+    console.print(f"[green]CSV output saved to: {output_csv}[/green]")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Parse AWS CloudTrail JSON logs into timeline format.")
-    parser.add_argument("path", help="Path to CloudTrail JSON file or directory")
+def print_help():
+    help_text = """
+    AWS CloudTrail JSON Log Parser
+
+    This script processes AWS CloudTrail JSON or gzipped JSON log files or directories
+    and extracts event timelines. It highlights sensitive actions based on predefined
+    severity levels, filters by user, IP, time, and more, and outputs the result as
+    a colored terminal table and a CSV file.
+
+    USAGE:
+      python script.py PATH [options]
+
+    REQUIRED ARGUMENTS:
+      PATH                Path to CloudTrail JSON file or directory containing JSON(.gz) files
+
+    OPTIONAL ARGUMENTS:
+      --csv FILE          Output CSV filename (default: slog.csv)
+      --highlight STR     String to highlight in the output table
+      --user USER         Filter events by username or principal ID
+      --source-ip IP      Filter by source IP address
+      --resource-contains STR  Filter by substring in resource ARNs
+      --action ACTION     Filter by event/action name
+      --access-key KEY    Filter by AWS Access Key ID
+      --start TIME        Start time filter, format 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'
+      --end TIME          End time filter, format 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM', or relative '+N' hours
+      --last DURATION     Relative time filter like '7d' (days), '24h' (hours), or '30m' (minutes)
+      --detect [LEVEL]    Enable detection of sensitive actions.
+                         LEVEL is optional and can be: all, medium, high, critical.
+                         Default is 'all'.
+
+    EXAMPLES:
+      # Parse single file and output CSV
+      python script.py ./logs/cloudtrail-2023-07-30.json --csv output.csv
+
+      # Parse directory, highlight 'DeleteUser' in output
+      python script.py ./cloudtrail_logs --highlight DeleteUser
+
+      # Filter events for user 'alice' in the last 7 days
+      python script.py ./logs --user alice --last 7d
+
+      # Detect only critical sensitive actions
+      python script.py ./logs --detect critical
+
+      # Filter events between specific times
+      python script.py ./logs --start "2023-07-01 00:00" --end "2023-07-15 23:59"
+
+    NOTES:
+      - Time inputs are in UTC.
+      - Use --last for relative time ranges (e.g., 7d = last 7 days).
+      - Sensitive actions are based on known AWS IAM and CloudTrail actions.
+      - Outputs CSV by default to 'slog.csv' if --csv is not provided.
+
+    For detailed filtering options, use --help.
+    """
+    console.print(textwrap.dedent(help_text))
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Parse AWS CloudTrail JSON logs into timeline format.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=textwrap.dedent("""
+        EXAMPLES:
+          python script.py ./logs/cloudtrail-2023-07-30.json --csv output.csv
+          python script.py ./cloudtrail_logs --highlight DeleteUser
+          python script.py ./logs --user alice --last 7d
+          python script.py ./logs --detect critical
+          python script.py ./logs --start "2023-07-01 00:00" --end "2023-07-15 23:59"
+        """)
+    )
+    parser.add_argument("path", nargs='?', help="Path to CloudTrail JSON file or directory")
     parser.add_argument("--csv", help="Output CSV file name", default="slog.csv")
     parser.add_argument("--highlight", help="String to highlight in table output", default=None)
     parser.add_argument("--user", help="Filter by username or principal ID", default=None)
@@ -332,24 +400,31 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    start_dt, end_dt = None, None
+    if not args.path:
+        print_help()
+        exit(1)
+
+    start_time = None
+    end_time = None
 
     if args.last:
-        start_dt, end_dt = parse_relative_last(args.last)
-    elif args.start:
-        start_dt = parse_datetime_input(args.start)
+        start_time, end_time = parse_relative_last(args.last)
+        if not start_time:
+            exit(1)
+    else:
+        if args.start:
+            start_time = parse_datetime_input(args.start)
+            if not start_time:
+                exit(1)
         if args.end:
-            if args.end.startswith("+"):
-                end_dt = parse_relative_end(start_dt, args.end)
+            if args.end.startswith("+") and start_time:
+                end_time = parse_relative_end(start_time, args.end)
+                if not end_time:
+                    exit(1)
             else:
-                end_dt = parse_datetime_input(args.end)
-
-    detect_mode = False
-    detect_level = None
-    if args.detect:
-        detect_mode = True
-        if args.detect.lower() != "all":
-            detect_level = args.detect.capitalize()
+                end_time = parse_datetime_input(args.end)
+                if not end_time:
+                    exit(1)
 
     events = process_path(args.path)
 
@@ -362,8 +437,11 @@ if __name__ == "__main__":
         resource_filter=args.resource_contains,
         action_filter=args.action,
         access_key_filter=args.access_key,
-        start_time=start_dt,
-        end_time=end_dt,
-        detect_mode=detect_mode,
-        detect_level=detect_level,
+        start_time=start_time,
+        end_time=end_time,
+        detect_mode=bool(args.detect),
+        detect_level=args.detect if args.detect != "all" else None,
     )
+
+if __name__ == "__main__":
+    main()
