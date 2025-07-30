@@ -25,6 +25,7 @@
 * Accepts dates with or without time:  
   - `YYYY-MM-DD`  
   - `YYYY-MM-DD HH:MM`  
+* Supports detection of sensitive medium, high, and critical actions using (`--detect`)
 * Highlights any string of interest  
 * Automatically extracts meaningful fallback resource info (useful for IAM and API events)  
 * Outputs to terminal and CSV
