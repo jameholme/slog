@@ -45,6 +45,7 @@ SENSITIVE_ACTIONS = {
 "UpdateAccessKey": ("Critical"),
 "UpdateAssumeRolePolicy": ("Critical"),
 "UpdateLoginProfile": ("Critical"),
+"PutAccountSettingDefault": ("Critical"),
 # High
 "CreatePolicy": ("High"),
 "CreateRole": ("High"),
@@ -71,7 +72,6 @@ SENSITIVE_ACTIONS = {
 "ListObjects": ("Medium"),
 "ListRoles": ("Medium"),
 "ListUsers": ("Medium"),
-"PutAccountSettingDefault": ("Medium"),
 # Low
 "GetAccountSummary": ("Low"),
 "GetCallerIdentity": ("Low"),
@@ -82,6 +82,8 @@ SENSITIVE_ACTIONS = {
 "GetUser": ("Low"),
 "ListAccountAliases": ("Low"),
 "ListAttachedRolePolicies": ("Low"),
+"ListAttachedUserPolicies": ("Low"),
+"ListPolicyVersions": ("Low"),
 "ListRolePolicies": ("Low"),
 "ListUserPolicies": ("Low"),
 # Informational
