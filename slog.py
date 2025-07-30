@@ -421,7 +421,7 @@ def print_help():
 
 def main():
     parser = argparse.ArgumentParser(
-        description="Parse AWS CloudTrail JSON logs into timeline format.",
+        description="It's time to slog through some logs!",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=textwrap.dedent("""
         EXAMPLES:
