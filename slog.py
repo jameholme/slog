@@ -9,44 +9,56 @@ from datetime import datetime, timedelta
 import re
 import pytz
 import argparse
+from rich.markup import escape
 
 console = Console()
 
-# --- Sensitive actions list for detection logic ---
 SENSITIVE_ACTIONS = {
-    "CreateAccessKey",
-    "DeleteAccessKey",
-    "UpdateAccessKey",
-    "CreateUser",
-    "DeleteUser",
-    "AttachUserPolicy",
-    "DetachUserPolicy",
-    "PutUserPolicy",
-    "PutGroupPolicy",
-    "CreatePolicy",
-    "DeletePolicy",
-    "AttachRolePolicy",
-    "DetachRolePolicy",
-    "PutRolePolicy",
-    "CreateLoginProfile",
-    "UpdateLoginProfile",
-    "DeleteLoginProfile",
-    "AddUserToGroup",
-    "RemoveUserFromGroup",
-    "AssumeRole",
-    "CreateTrail",
-    "DeleteTrail",
-    "StopLogging",
-    "StartLogging",
-    "PutBucketPolicy",
-    "PutObjectAcl",
-    "PutBucketAcl",
-    "ModifySnapshotAttribute",
-    "AuthorizeSecurityGroupIngress",
-    "AuthorizeSecurityGroupEgress",
-    "RevokeSecurityGroupIngress",
-    "RevokeSecurityGroupEgress",
-    "UpdateAssumeRolePolicy"
+    "DeleteBucket": ("Critical"),
+    "PutBucketAcl": ("High"),
+    "CreateUser": ("Critical"),
+    "DeleteUser": ("Critical"),
+    "AttachUserPolicy": ("Critical"),
+    "DetachUserPolicy": ("Critical"),
+    "CreateAccessKey": ("Critical"),
+    "DeleteAccessKey": ("Critical"),
+    "UpdateAccessKey": ("Critical"),
+    "UpdateAssumeRolePolicy": ("Critical"),
+    "CreateRole": ("High"),
+    "DeleteRole": ("Critical"),
+    "PutRolePolicy": ("Critical"),
+    "AddUserToGroup": ("Critical"),
+    "RemoveUserFromGroup": ("Critical"),
+    "CreateTrail": ("High"),
+    "DeleteTrail": ("High"),
+    "StopLogging": ("High"),
+    "StartLogging": ("High"),
+    "UpdateTrail": ("High"),
+    "PutUserPolicy": ("Critical"),
+    "PutGroupPolicy": ("Critical"),
+    "CreatePolicy": ("Critical"),
+    "DeletePolicy": ("Critical"),
+    "AttachRolePolicy": ("Critical"),
+    "DetachRolePolicy": ("Critical"),
+    "CreateLoginProfile": ("Critical"),
+    "UpdateLoginProfile": ("Critical"),
+    "DeleteLoginProfile": ("Critical"),
+    "AssumeRole": ("Critical"),
+    "PutBucketPolicy": ("Critical"),
+    "PutObjectAcl": ("High"),
+    "ModifySnapshotAttribute": ("Critical"),
+    "AuthorizeSecurityGroupIngress": ("Critical"),
+    "AuthorizeSecurityGroupEgress": ("Critical"),
+    "RevokeSecurityGroupIngress": ("Critical"),
+    "RevokeSecurityGroupEgress": ("Critical"),
+    "PutAccountSettingDefault": ("Critical"),
+}
+
+
+SEVERITY_COLORS = {
+    "Medium": "yellow",
+    "High": "orange3",
+    "Critical": "red",
 }
 
 def read_json_file(filepath):
@@ -107,6 +119,13 @@ def extract_events(data):
         if errors_or_output:
             resource_arns += "\n" + "\n".join(errors_or_output)
 
+        # Determine severity
+        severity = None
+        for action, (sev) in SENSITIVE_ACTIONS.items():
+            if action.lower() == event_name.lower():
+                severity = sev
+                break
+
         events.append({
             "Time": event_time,
             "User": user_name,
@@ -115,6 +134,7 @@ def extract_events(data):
             "SourceIP": source_ip,
             "DestinationIP": dest_ip,
             "Resource": resource_arns,
+            "Severity": severity or "",
         })
 
     return events
@@ -206,6 +226,8 @@ def output_results(
     access_key_filter=None,
     start_time=None,
     end_time=None,
+    detect_mode=False,
+    detect_level=None,
 ):
     if not events:
         console.print("[yellow]No events found.[/yellow]")
@@ -234,6 +256,15 @@ def output_results(
     if access_key_filter:
         df = df[df["AccessKey"].str.contains(access_key_filter, case=False, na=False)]
 
+    if detect_mode:
+        # Filter only sensitive actions
+        df = df[df["Severity"] != ""]
+
+        if detect_level:
+            detect_level = detect_level.capitalize()
+            if detect_level in SEVERITY_COLORS:
+                df = df[df["Severity"] == detect_level]
+
     if df.empty:
         console.print("[yellow]No events matched the filters.[/yellow]")
         return
@@ -251,19 +282,33 @@ def output_results(
         "SourceIP": {"style": "blue"},
         "DestinationIP": {"style": "blue"},
         "Resource": {"style": "white", "max_width": 60},
+        "Severity": {},
     }
 
-    for col in df.columns:
-        settings = column_settings.get(col, {})
-        table.add_column(col, **settings)
+    for col in column_settings.keys():
+        table.add_column(col, **column_settings[col])
 
     for _, row in df.iterrows():
         row_data = []
-        for col in df.columns:
+        for col in column_settings.keys():
             val = str(row[col]) if pd.notna(row[col]) else ""
+
+            # Escape markup before printing to avoid Rich markup errors
+            val = escape(val)
+
+            # Special formatting for Resource: wrap long lines
             if col == "Resource" and len(val) > 60:
                 val = "\n".join([val[i:i+60] for i in range(0, len(val), 60)])
-            val = highlight_text(val, highlight)
+
+            # Highlight severity tags with colors
+            if col == "Severity" and val in SEVERITY_COLORS:
+                color = SEVERITY_COLORS[val]
+                val = f"[{color}]{val}[/{color}]"
+
+            # Highlight user-specified string
+            if col != "Severity":  # Don't override severity color
+                val = highlight_text(val, highlight)
+
             row_data.append(val)
         table.add_row(*row_data)
 
@@ -283,7 +328,7 @@ if __name__ == "__main__":
     parser.add_argument("--start", help="Start time in 'YYYY-MM-DD' or 'YYYY-MM-DD HH:MM'", default=None)
     parser.add_argument("--end", help="End time in 'YYYY-MM-DD', 'YYYY-MM-DD HH:MM', or +N (hours)", default=None)
     parser.add_argument("--last", help="Use relative time like 7d, 24h, 30m", default=None)
-    parser.add_argument("--detect", help="Only show sensitive AWS actions", action="store_true")  # <-- NEW ARG
+    parser.add_argument("--detect", nargs='?', const='all', choices=['all', 'medium', 'high', 'critical'], help="Detect sensitive actions; optionally filter by severity")
 
     args = parser.parse_args()
 
@@ -299,16 +344,15 @@ if __name__ == "__main__":
             else:
                 end_dt = parse_datetime_input(args.end)
 
-    # --- Detection logic override ---
-    action_filter = args.action
+    detect_mode = False
+    detect_level = None
     if args.detect:
-        sensitive_regex = "|".join(re.escape(action) for action in SENSITIVE_ACTIONS)
-        if action_filter:
-            action_filter = f"({action_filter})|({sensitive_regex})"
-        else:
-            action_filter = sensitive_regex
+        detect_mode = True
+        if args.detect.lower() != "all":
+            detect_level = args.detect.capitalize()
 
     events = process_path(args.path)
+
     output_results(
         events,
         output_csv=args.csv,
@@ -316,8 +360,10 @@ if __name__ == "__main__":
         user_filter=args.user,
         ip_filter=args.source_ip,
         resource_filter=args.resource_contains,
-        action_filter=action_filter,
+        action_filter=args.action,
         access_key_filter=args.access_key,
         start_time=start_dt,
         end_time=end_dt,
+        detect_mode=detect_mode,
+        detect_level=detect_level,
     )
