@@ -59,7 +59,6 @@ pip install pandas rich pytz
 ## 🚀 Usage
 
 ```bash
-usage: slog.py [-h] [--csv CSV] [--highlight HIGHLIGHT] [--user USER] [--source-ip SOURCE_IP] [--resource-contains RESOURCE_CONTAINS] [--action ACTION] [--access-key ACCESS_KEY] [--start START] [--end END] [--last LAST] [--detect [{all,informational,low,medium,high,critical}]] [path]
 
 It's time to slog through some logs!
 
@@ -92,65 +91,6 @@ EXAMPLES:
   python script.py ./logs --detect critical
   python script.py ./logs --start "2023-07-01 00:00" --end "2023-07-15 23:59"
 ```
-
----
-
-## 🔧 Options
-
-| Option                | Description |
-|------------------------|-------------|
-| `path`                | Path to CloudTrail file or directory |
-| `--csv`               | Output CSV filename (default: `slog.csv`) |
-| `--user`              | Filter by username or principal ID |
-| `--source-ip`         | Filter by source IP |
-| `--action`            | Filter by specific action name |
-| `--resource-contains` | Filter by partial match in resource name or ARN |
-| `--access-key`        | Filter by AWS Access Key ID |
-| `--highlight`         | Highlight a term (user, action, IP, etc.) |
-| `--start`             | Start date/time (`YYYY-MM-DD` or `YYYY-MM-DD HH:MM`) |
-| `--end`               | End time or offset (e.g. `+2` for 2 hours after `--start`) |
-| `--last`              | Show logs from the past `N` (`30m`, `2h`, `7d`, etc.) |
-| `--detect [level]`    | Show only sensitive actions. Optional level: `medium`, `high`, `critical`, `low`, `informational`. Default: Medium+ |
-
----
-
-## 🔒 Detection Severity Defaults
-
-When using `--detect` **without a level**, only these are shown:
-- `Medium`
-- `High`
-- `Critical`
-
-To show additional levels:
-
-```bash
---detect low
---detect informational
-```
-
-To show just one level:
-
-```bash
---detect high
-```
-
----
-
-## 🧾 Output
-
-- 📊 **Terminal Table**: Filtered and color-highlighted table
-- 📄 **CSV Export**: Same data, saved as `slog.csv` (unless overridden)
-
-### Columns
-
-- `Time`
-- `User`
-- `AccessKey`
-- `Action`
-- `SourceIP`
-- `DestinationIP`
-- `Resource`
-- `Severity`
 
 ---
 
